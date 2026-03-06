@@ -9,13 +9,16 @@ add_executable(srtla_rec
     src/common.c
     src/common.h
     src/main.cpp
-    src/main.h)
+    src/main.h
+    src/stats_server.cpp
+    src/stats_server.h)
 
 target_include_directories(srtla_rec PRIVATE
 	"deps/argparse/include")
 
 target_link_libraries(srtla_rec PRIVATE
-    spdlog::spdlog)
+    spdlog::spdlog
+    pthread)
 
 target_compile_features(srtla_rec PRIVATE cxx_std_17)
 #target_compile_options(srtla_rec PRIVATE -Wall -Wextra)

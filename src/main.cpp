@@ -40,6 +40,7 @@
 #include <argparse/argparse.hpp>
 
 #include "main.h"
+#include "stats_server.h"
 
 int srtla_sock;
 struct sockaddr srt_addr;
@@ -144,6 +145,7 @@ srtla_conn::srtla_conn(struct sockaddr &_addr, time_t ts) :
   last_rcvd(ts)
 {
   recv_log.fill(0);
+  registered_at = ts;
 }
 
 srtla_conn_group::srtla_conn_group(char *client_id, time_t ts) :
@@ -399,6 +401,11 @@ void handle_srtla_data(time_t ts) {
   // Update the connection's use timestamp
   c->last_rcvd = ts;
 
+  // Update per-link and per-group stats counters
+  c->stats_bytes.fetch_add(n, std::memory_order_relaxed);
+  c->stats_pkts.fetch_add(1, std::memory_order_relaxed);
+  g->stats_total_bytes.fetch_add(n, std::memory_order_relaxed);
+
   // Resend SRTLA keep-alive packets to the sender
   if (is_srtla_keepalive(buf, n)) {
     int ret = sendto(srtla_sock, &buf, n, 0, &srtla_addr, addr_len);
@@ -596,6 +603,7 @@ int main(int argc, char **argv) {
   args.add_argument("--srt_hostname").help("Hostname of the downstream SRT server").default_value(std::string{"127.0.0.1"});
   args.add_argument("--srt_port").help("Port of the downstream SRT server").default_value((uint16_t)4001).scan<'d', uint16_t>();
   args.add_argument("--verbose").help("Enable verbose logging").default_value(false).implicit_value(true);
+  args.add_argument("--stats_port").help("Port for the stats HTTP server (0 to disable)").default_value((uint16_t)0).scan<'d', uint16_t>();
 
   try {
 		args.parse_args(argc, argv);
@@ -611,6 +619,12 @@ int main(int argc, char **argv) {
 
   if (args.get<bool>("--verbose"))
     spdlog::set_level(spdlog::level::debug);
+
+  uint16_t stats_port = args.get<uint16_t>("--stats_port");
+  if (stats_port > 0) {
+    stats_server_start(stats_port);
+    spdlog::info("Stats server started on port {}", stats_port);
+  }
 
   // Try to detect if the SRT server is reachable.
   int ret = resolve_srt_addr(srt_hostname.c_str(), srt_port.c_str());

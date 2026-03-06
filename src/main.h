@@ -21,6 +21,8 @@
 #pragma once
 
 #include <memory>
+#include <atomic>
+#include <ctime>
 
 #include <spdlog/spdlog.h>
 
@@ -45,6 +47,10 @@ struct srtla_conn {
     int recv_idx = 0;
     std::array<uint32_t, RECV_ACK_INT> recv_log;
 
+    std::atomic<uint64_t> stats_bytes{0};
+    std::atomic<uint64_t> stats_pkts{0};
+    time_t registered_at = 0;
+
     srtla_conn(struct sockaddr &_addr, time_t ts);
 };
 typedef std::shared_ptr<srtla_conn> srtla_conn_ptr;
@@ -55,6 +61,8 @@ struct srtla_conn_group {
     time_t created_at = 0;
     int srt_sock = -1;
     struct sockaddr last_addr = {};
+
+    std::atomic<uint64_t> stats_total_bytes{0};
 
     srtla_conn_group(char *client_id, time_t ts);
     ~srtla_conn_group();
