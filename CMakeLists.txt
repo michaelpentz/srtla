@@ -4,6 +4,8 @@ project(srtla_rec VERSION 1.0.0)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/Modules")
 
 find_package(spdlog REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(MAXMINDDB IMPORTED_TARGET libmaxminddb)
 
 add_executable(srtla_rec
     src/common.c
@@ -19,6 +21,11 @@ target_include_directories(srtla_rec PRIVATE
 target_link_libraries(srtla_rec PRIVATE
     spdlog::spdlog
     pthread)
+
+if(MAXMINDDB_FOUND)
+    target_link_libraries(srtla_rec PRIVATE PkgConfig::MAXMINDDB)
+    target_compile_definitions(srtla_rec PRIVATE HAVE_MAXMINDDB=1)
+endif()
 
 target_compile_features(srtla_rec PRIVATE cxx_std_17)
 #target_compile_options(srtla_rec PRIVATE -Wall -Wextra)

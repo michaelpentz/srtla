@@ -14,5 +14,5 @@
 #include <thread>
 #include <atomic>
 
-void stats_server_start(uint16_t port);
+void stats_server_start(uint16_t port, const char *geoip_db_path = nullptr);
 void stats_server_stop();

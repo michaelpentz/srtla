@@ -604,6 +604,7 @@ int main(int argc, char **argv) {
   args.add_argument("--srt_port").help("Port of the downstream SRT server").default_value((uint16_t)4001).scan<'d', uint16_t>();
   args.add_argument("--verbose").help("Enable verbose logging").default_value(false).implicit_value(true);
   args.add_argument("--stats_port").help("Port for the stats HTTP server (0 to disable)").default_value((uint16_t)0).scan<'d', uint16_t>();
+  args.add_argument("--geoip_db").help("Path to GeoLite2-ASN.mmdb for carrier identification").default_value(std::string{""});
 
   try {
 		args.parse_args(argc, argv);
@@ -621,8 +622,9 @@ int main(int argc, char **argv) {
     spdlog::set_level(spdlog::level::debug);
 
   uint16_t stats_port = args.get<uint16_t>("--stats_port");
+  std::string geoip_db = args.get<std::string>("--geoip_db");
   if (stats_port > 0) {
-    stats_server_start(stats_port);
+    stats_server_start(stats_port, geoip_db.empty() ? nullptr : geoip_db.c_str());
     spdlog::info("Stats server started on port {}", stats_port);
   }
 

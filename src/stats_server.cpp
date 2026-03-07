@@ -23,10 +23,36 @@
 
 #include <spdlog/spdlog.h>
 
+#ifdef HAVE_MAXMINDDB
+#include <maxminddb.h>
+#endif
+
 #include "main.h"
 #include "stats_server.h"
 
 extern std::vector<srtla_conn_group_ptr> conn_groups;
+
+#ifdef HAVE_MAXMINDDB
+static MMDB_s mmdb;
+static bool mmdb_open = false;
+
+static std::string lookup_asn_org(const char *ip_str) {
+    if (!mmdb_open) return "";
+
+    int gai_error, mmdb_error;
+    MMDB_lookup_result_s result = MMDB_lookup_string(&mmdb, ip_str, &gai_error, &mmdb_error);
+    if (gai_error != 0 || mmdb_error != MMDB_SUCCESS || !result.found_entry)
+        return "";
+
+    MMDB_entry_data_s entry;
+    int status = MMDB_get_value(&result.entry, &entry,
+                                "autonomous_system_organization", NULL);
+    if (status != MMDB_SUCCESS || !entry.has_data || entry.type != MMDB_DATA_TYPE_UTF8_STRING)
+        return "";
+
+    return std::string(entry.utf8_string, entry.data_size);
+}
+#endif
 
 static std::atomic<bool> stats_stop_flag{false};
 static std::thread stats_thread;
@@ -93,6 +119,10 @@ static std::string build_stats_json() {
             char share_buf[16];
             snprintf(share_buf, sizeof(share_buf), "%.1f", share_pct);
 
+#ifdef HAVE_MAXMINDDB
+            std::string asn_org = lookup_asn_org(addr_str);
+#endif
+
             json += "{\"addr\":\"";
             json += addr_str;
             json += ":";
@@ -107,6 +137,17 @@ static std::string build_stats_json() {
             json += std::to_string(last_ms_ago);
             json += ",\"uptime_s\":";
             json += std::to_string(uptime_s);
+#ifdef HAVE_MAXMINDDB
+            if (!asn_org.empty()) {
+                json += ",\"asn_org\":\"";
+                // Escape any quotes in the org name
+                for (char ch : asn_org) {
+                    if (ch == '"') json += "\\\"";
+                    else json += ch;
+                }
+                json += "\"";
+            }
+#endif
             json += "}";
         }
 
@@ -181,7 +222,22 @@ static void stats_thread_fn(uint16_t port) {
     spdlog::debug("Stats server: stopped");
 }
 
-void stats_server_start(uint16_t port) {
+void stats_server_start(uint16_t port, const char *geoip_db_path) {
+#ifdef HAVE_MAXMINDDB
+    if (geoip_db_path && geoip_db_path[0]) {
+        int status = MMDB_open(geoip_db_path, MMDB_MODE_MMAP, &mmdb);
+        if (status == MMDB_SUCCESS) {
+            mmdb_open = true;
+            spdlog::info("Stats server: loaded GeoIP database from {}", geoip_db_path);
+        } else {
+            spdlog::warn("Stats server: failed to open GeoIP database {}: {}",
+                         geoip_db_path, MMDB_strerror(status));
+        }
+    }
+#else
+    (void)geoip_db_path;
+#endif
+
     stats_stop_flag.store(false, std::memory_order_relaxed);
     stats_thread = std::thread(stats_thread_fn, port);
     stats_thread.detach();
@@ -189,4 +245,10 @@ void stats_server_start(uint16_t port) {
 
 void stats_server_stop() {
     stats_stop_flag.store(true, std::memory_order_relaxed);
+#ifdef HAVE_MAXMINDDB
+    if (mmdb_open) {
+        MMDB_close(&mmdb);
+        mmdb_open = false;
+    }
+#endif
 }
